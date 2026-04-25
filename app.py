@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, date
 import os
 import requests
 
@@ -16,6 +16,17 @@ MODELS_TO_TRY = [
     "claude-haiku-4-5-20251001",
     "claude-sonnet-4-6",
 ]
+
+sent_today = {}
+
+def is_duplicate(symbol: str, signal: str) -> bool:
+    key = f"{symbol}_{signal}"
+    today = date.today()
+    if key in sent_today and sent_today[key] == today:
+        print(f"Duplicate blocked: {key}")
+        return True
+    sent_today[key] = today
+    return False
 
 class TradingAlert(BaseModel):
     symbol: str
@@ -32,8 +43,6 @@ class TradingAlert(BaseModel):
     ema20: str = ""
     ema50: str = ""
     ema200: str = ""
-    sma50: str = ""
-    sma200: str = ""
     rsi: str = ""
     rsi_signal: str = ""
     macd: str = ""
@@ -50,14 +59,19 @@ class TradingAlert(BaseModel):
     resistance: str = ""
     week52_high: str = ""
     week52_low: str = ""
-    sector: str = ""
-    spy_trend: str = ""
-    sector_trend: str = ""
     candle_pattern: str = ""
+    buy_score: str = ""
+    sell_score: str = ""
 
 
 def build_prompt(alert: TradingAlert, display_name: str) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Score info
+    score = alert.buy_score if "BUY" in alert.signal.upper() else alert.sell_score
+    score_int = int(float(score)) if score else 0
+    quality = "قوية جداً 🔥" if score_int >= 80 else "جيدة ✅" if score_int >= 60 else "متوسطة ⚠️"
+
     indicators = []
     if alert.rsi:
         indicators.append(f"RSI(14): {alert.rsi}" + (f" ({alert.rsi_signal})" if alert.rsi_signal else ""))
@@ -84,8 +98,6 @@ def build_prompt(alert: TradingAlert, display_name: str) -> str:
         indicators.append(f"Support: {alert.support}")
     if alert.resistance:
         indicators.append(f"Resistance: {alert.resistance}")
-    if alert.week52_high or alert.week52_low:
-        indicators.append(f"52W Range: {alert.week52_low} - {alert.week52_high}")
     if alert.candle_pattern:
         indicators.append(f"Candle Pattern: {alert.candle_pattern}")
 
@@ -100,6 +112,7 @@ def build_prompt(alert: TradingAlert, display_name: str) -> str:
 الإشارة: {alert.signal}
 الفريم: {alert.timeframe}
 OHLC: O:{alert.open} H:{alert.high} L:{alert.low} C:{alert.close if alert.close else alert.price}
+نقاط جودة الإشارة: {score}/100 - {quality}
 
 المؤشرات:
 {indicators_text}
@@ -107,7 +120,7 @@ OHLC: O:{alert.open} H:{alert.high} L:{alert.low} C:{alert.close if alert.close 
 رد بهذا الشكل الحرفي فقط، لا تضيف أي شي إضافي:
 
 🎯 الإشارة: [وصف مختصر جداً]
-📊 جودة الإعداد: [⭐⭐⭐⭐⭐] - [قوي جداً / جيد / متوسط / ضعيف]
+📊 جودة الإعداد: [{score}/100] - [{quality}]
 🔑 الدخول: [السعر]  |  الستوب: [السعر] ([%]%)  |  الهدف: [السعر] ([%]%)
 📈 R:R: 1:[النسبة]
 ⏳ القرار: [ادخل الآن 🟢 / انتظر تأكيد 🟡 / تجنب 🔴]
@@ -130,9 +143,7 @@ def ask_claude(prompt: str):
                 "ردودك دائماً بالعربية، مختصرة جداً، ومبنية على البيانات المعطاة فقط. "
                 "لا تضيف أي شي خارج الشكل المطلوب."
             ),
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
+            "messages": [{"role": "user", "content": prompt}]
         }
         try:
             r = requests.post(
@@ -177,6 +188,7 @@ def home():
         "claude_key": "loaded" if API_KEY else "missing",
         "telegram_token": "loaded" if TELEGRAM_BOT_TOKEN else "missing",
         "telegram_chat": "loaded" if TELEGRAM_CHAT_ID else "missing",
+        "signals_sent_today": len(sent_today),
     }
 
 
@@ -186,15 +198,21 @@ def webhook(alert: TradingAlert):
     company_name = alert.company if alert.company else clean_symbol
     display_name = f"{clean_symbol} ({company_name})" if alert.company else clean_symbol
 
+    if is_duplicate(clean_symbol, alert.signal.upper()):
+        return {"status": "duplicate", "symbol": display_name}
+
     prompt = build_prompt(alert, display_name)
     model_used, analysis = ask_claude(prompt)
 
     now_str = datetime.now().strftime("%d/%m %H:%M")
     signal_emoji = "🟢" if "BUY" in alert.signal.upper() else "🔴"
+    score = alert.buy_score if "BUY" in alert.signal.upper() else alert.sell_score
+    score_bar = "🔥" if int(float(score)) >= 80 else "✅" if int(float(score)) >= 60 else "⚠️" if score else ""
 
     telegram_message = (
         f"{signal_emoji} <b>{display_name}</b>\n"
         f"💰 {alert.price}$  |  📡 {alert.signal}  |  ⏱ {alert.timeframe}\n"
+        f"🎯 النقاط: {score}/100 {score_bar}\n"
         f"━━━━━━━━━━━━━━\n"
         f"{analysis}\n"
         f"━━━━━━━━━━━━━━\n"
@@ -207,5 +225,6 @@ def webhook(alert: TradingAlert):
         "status": "ok",
         "symbol": display_name,
         "model_used": model_used,
+        "score": score,
         "analysis": analysis,
     }

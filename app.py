@@ -41,6 +41,7 @@ class TradingAlert(BaseModel):
     volume: str = ""
     avg_volume: str = ""
     ema20: str = ""
+    ema21: str = ""
     ema50: str = ""
     ema200: str = ""
     rsi: str = ""
@@ -55,6 +56,7 @@ class TradingAlert(BaseModel):
     bb_lower: str = ""
     atr: str = ""
     atr_percent: str = ""
+    vol_ratio: str = ""
     support: str = ""
     resistance: str = ""
     week52_high: str = ""
@@ -62,13 +64,15 @@ class TradingAlert(BaseModel):
     candle_pattern: str = ""
     buy_score: str = ""
     sell_score: str = ""
+    tp: str = ""
+    sl: str = ""
 
 
 def build_prompt(alert: TradingAlert, display_name: str) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    # Score info
-    score = alert.buy_score if "BUY" in alert.signal.upper() else alert.sell_score
+    is_long = alert.signal.upper() in ["BUY", "CALL"]
+    score = alert.buy_score if is_long else alert.sell_score
     score_int = int(float(score)) if score else 0
     quality = "قوية جداً 🔥" if score_int >= 80 else "جيدة ✅" if score_int >= 60 else "متوسطة ⚠️"
 
@@ -81,6 +85,8 @@ def build_prompt(alert: TradingAlert, display_name: str) -> str:
         indicators.append(f"Stochastic: K={alert.stoch_k} D={alert.stoch_d}")
     if alert.ema20:
         indicators.append(f"EMA20: {alert.ema20}")
+    if alert.ema21:
+        indicators.append(f"EMA21: {alert.ema21}")
     if alert.ema50:
         indicators.append(f"EMA50: {alert.ema50}")
     if alert.ema200:
@@ -89,6 +95,8 @@ def build_prompt(alert: TradingAlert, display_name: str) -> str:
         indicators.append(f"Bollinger: {alert.bb_lower} <- {alert.bb_middle} -> {alert.bb_upper}")
     if alert.atr:
         indicators.append(f"ATR: {alert.atr}" + (f" ({alert.atr_percent}%)" if alert.atr_percent else ""))
+    if alert.vol_ratio:
+        indicators.append(f"Volume Ratio: {alert.vol_ratio}x average")
     if alert.volume:
         vol_line = f"Volume: {alert.volume}"
         if alert.avg_volume:
@@ -98,12 +106,16 @@ def build_prompt(alert: TradingAlert, display_name: str) -> str:
         indicators.append(f"Support: {alert.support}")
     if alert.resistance:
         indicators.append(f"Resistance: {alert.resistance}")
+    if alert.tp:
+        indicators.append(f"TP (pre-calc): {alert.tp}")
+    if alert.sl:
+        indicators.append(f"SL (pre-calc): {alert.sl}")
     if alert.candle_pattern:
         indicators.append(f"Candle Pattern: {alert.candle_pattern}")
 
     indicators_text = "\n".join(f"  - {i}" for i in indicators) if indicators else "  - لا توجد مؤشرات"
 
-    prompt = f"""أنت محلل أسهم أمريكية متخصص في السوينج تريدنج.
+    prompt = f"""أنت محلل أسهم أمريكية محترف متخصص في السوينج تريدنج والخيارات.
 الوقت: {now}
 
 البيانات:
@@ -139,7 +151,7 @@ def ask_claude(prompt: str):
             "model": model_name,
             "max_tokens": 400,
             "system": (
-                "أنت محلل أسهم أمريكية محترف متخصص في السوينج تريدنج. "
+                "أنت محلل أسهم أمريكية محترف متخصص في السوينج تريدنج والخيارات. "
                 "ردودك دائماً بالعربية، مختصرة جداً، ومبنية على البيانات المعطاة فقط. "
                 "لا تضيف أي شي خارج الشكل المطلوب."
             ),
@@ -205,9 +217,10 @@ def webhook(alert: TradingAlert):
     model_used, analysis = ask_claude(prompt)
 
     now_str = datetime.now().strftime("%d/%m %H:%M")
-    signal_emoji = "🟢" if "BUY" in alert.signal.upper() else "🔴"
-    score = alert.buy_score if "BUY" in alert.signal.upper() else alert.sell_score
-    score_bar = "🔥" if int(float(score)) >= 80 else "✅" if int(float(score)) >= 60 else "⚠️" if score else ""
+    is_long = alert.signal.upper() in ["BUY", "CALL"]
+    signal_emoji = "🟢" if is_long else "🔴"
+    score = alert.buy_score if is_long else alert.sell_score
+    score_bar = "🔥" if score and int(float(score)) >= 80 else "✅" if score and int(float(score)) >= 60 else "⚠️" if score else ""
 
     telegram_message = (
         f"{signal_emoji} <b>{display_name}</b>\n"

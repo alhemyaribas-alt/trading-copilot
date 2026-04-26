@@ -74,69 +74,70 @@ def build_prompt(alert: TradingAlert, display_name: str) -> str:
     is_long = alert.signal.upper() in ["BUY", "CALL"]
     score = alert.buy_score if is_long else alert.sell_score
     score_int = int(float(score)) if score else 0
-    quality = "قوية جداً 🔥" if score_int >= 80 else "جيدة ✅" if score_int >= 60 else "متوسطة ⚠️"
+    quality = "STRONG" if score_int >= 80 else "GOOD" if score_int >= 60 else "WEAK"
 
     indicators = []
     if alert.rsi:
-        indicators.append(f"RSI(14): {alert.rsi}" + (f" ({alert.rsi_signal})" if alert.rsi_signal else ""))
+        indicators.append(f"RSI(14)    : {alert.rsi}" + (f" ({alert.rsi_signal})" if alert.rsi_signal else ""))
     if alert.macd and alert.macd_signal:
-        indicators.append(f"MACD: {alert.macd} | Signal: {alert.macd_signal}" + (f" | Hist: {alert.macd_hist}" if alert.macd_hist else ""))
+        indicators.append(f"MACD       : {alert.macd} | Signal: {alert.macd_signal}" + (f" | Hist: {alert.macd_hist}" if alert.macd_hist else ""))
     if alert.stoch_k and alert.stoch_d:
-        indicators.append(f"Stochastic: K={alert.stoch_k} D={alert.stoch_d}")
+        indicators.append(f"Stoch      : K={alert.stoch_k} D={alert.stoch_d}")
     if alert.ema20:
-        indicators.append(f"EMA20: {alert.ema20}")
+        indicators.append(f"EMA20      : {alert.ema20}")
     if alert.ema21:
-        indicators.append(f"EMA21: {alert.ema21}")
+        indicators.append(f"EMA21      : {alert.ema21}")
     if alert.ema50:
-        indicators.append(f"EMA50: {alert.ema50}")
+        indicators.append(f"EMA50      : {alert.ema50}")
     if alert.ema200:
-        indicators.append(f"EMA200: {alert.ema200}")
+        indicators.append(f"EMA200     : {alert.ema200}")
     if alert.bb_upper and alert.bb_lower:
-        indicators.append(f"Bollinger: {alert.bb_lower} <- {alert.bb_middle} -> {alert.bb_upper}")
+        indicators.append(f"Bollinger  : {alert.bb_lower} / {alert.bb_middle} / {alert.bb_upper}")
     if alert.atr:
-        indicators.append(f"ATR: {alert.atr}" + (f" ({alert.atr_percent}%)" if alert.atr_percent else ""))
+        indicators.append(f"ATR        : {alert.atr}")
     if alert.vol_ratio:
-        indicators.append(f"Volume Ratio: {alert.vol_ratio}x average")
+        indicators.append(f"Vol Ratio  : {alert.vol_ratio}x")
     if alert.volume:
-        vol_line = f"Volume: {alert.volume}"
+        vol_line = f"Volume     : {alert.volume}"
         if alert.avg_volume:
             vol_line += f" | Avg: {alert.avg_volume}"
         indicators.append(vol_line)
     if alert.support:
-        indicators.append(f"Support: {alert.support}")
+        indicators.append(f"Support    : {alert.support}")
     if alert.resistance:
-        indicators.append(f"Resistance: {alert.resistance}")
+        indicators.append(f"Resistance : {alert.resistance}")
     if alert.tp:
-        indicators.append(f"TP (pre-calc): {alert.tp}")
+        indicators.append(f"TP (calc)  : {alert.tp}")
     if alert.sl:
-        indicators.append(f"SL (pre-calc): {alert.sl}")
+        indicators.append(f"SL (calc)  : {alert.sl}")
     if alert.candle_pattern:
-        indicators.append(f"Candle Pattern: {alert.candle_pattern}")
+        indicators.append(f"Pattern    : {alert.candle_pattern}")
 
-    indicators_text = "\n".join(f"  - {i}" for i in indicators) if indicators else "  - لا توجد مؤشرات"
+    indicators_text = "\n".join(f"  {i}" for i in indicators) if indicators else "  No indicators available"
 
-    prompt = f"""أنت محلل أسهم أمريكية محترف متخصص في السوينج تريدنج والخيارات.
-الوقت: {now}
+    prompt = f"""You are a professional US stock analyst specialized in swing trading and options.
+Time: {now}
 
-البيانات:
-السهم: {display_name}
-السعر: {alert.price}
-الإشارة: {alert.signal}
-الفريم: {alert.timeframe}
-OHLC: O:{alert.open} H:{alert.high} L:{alert.low} C:{alert.close if alert.close else alert.price}
-نقاط جودة الإشارة: {score}/100 - {quality}
+INSTRUMENT: {display_name}
+PRICE     : {alert.price}
+SIGNAL    : {alert.signal}
+TIMEFRAME : {alert.timeframe}
+OHLC      : O:{alert.open} H:{alert.high} L:{alert.low} C:{alert.close if alert.close else alert.price}
+SCORE     : {score}/100 — {quality}
 
-المؤشرات:
+INDICATORS:
 {indicators_text}
 
-رد بهذا الشكل الحرفي فقط، لا تضيف أي شي إضافي:
+Respond in Arabic using ONLY this exact format, no additions:
 
-🎯 الإشارة: [وصف مختصر جداً]
-📊 جودة الإعداد: [{score}/100] - [{quality}]
-🔑 الدخول: [السعر]  |  الستوب: [السعر] ([%]%)  |  الهدف: [السعر] ([%]%)
-📈 R:R: 1:[النسبة]
-⏳ القرار: [ادخل الآن 🟢 / انتظر تأكيد 🟡 / تجنب 🔴]
-📝 ملاحظة: [جملة واحدة فقط]"""
+SIGNAL     : [brief description]
+QUALITY    : [{score}/100] [{quality}]
+ENTRY      : [price]
+STOP LOSS  : [price] ([%]%)
+TARGET     : [price] ([%]%)
+R:R        : 1:[ratio]
+DECISION   : [ENTER NOW / WAIT / AVOID]
+NOTE       : [one sentence only]"""
     return prompt
 
 
@@ -151,9 +152,9 @@ def ask_claude(prompt: str):
             "model": model_name,
             "max_tokens": 400,
             "system": (
-                "أنت محلل أسهم أمريكية محترف متخصص في السوينج تريدنج والخيارات. "
-                "ردودك دائماً بالعربية، مختصرة جداً، ومبنية على البيانات المعطاة فقط. "
-                "لا تضيف أي شي خارج الشكل المطلوب."
+                "You are a professional US stock analyst specialized in swing trading and options. "
+                "Always respond in Arabic. Be concise and data-driven. "
+                "Never add anything outside the requested format."
             ),
             "messages": [{"role": "user", "content": prompt}]
         }
@@ -166,7 +167,7 @@ def ask_claude(prompt: str):
             )
             data = r.json()
             if "error" in data:
-                print(f"خطأ من {model_name}: {data['error']}")
+                print(f"Error from {model_name}: {data['error']}")
                 continue
             if "content" in data:
                 text = "".join(
@@ -176,9 +177,9 @@ def ask_claude(prompt: str):
                 )
                 return model_name, text.strip()
         except Exception as e:
-            print(f"Exception مع {model_name}: {e}")
+            print(f"Exception with {model_name}: {e}")
             continue
-    return None, "تعذر التحليل"
+    return None, "Analysis unavailable"
 
 
 def send_telegram(message: str):
@@ -216,20 +217,24 @@ def webhook(alert: TradingAlert):
     prompt = build_prompt(alert, display_name)
     model_used, analysis = ask_claude(prompt)
 
-    now_str = datetime.now().strftime("%d/%m %H:%M")
+    now_str = datetime.now().strftime("%d/%m %Y %H:%M")
     is_long = alert.signal.upper() in ["BUY", "CALL"]
-    signal_emoji = "🟢" if is_long else "🔴"
     score = alert.buy_score if is_long else alert.sell_score
-    score_bar = "🔥" if score and int(float(score)) >= 80 else "✅" if score and int(float(score)) >= 60 else "⚠️" if score else ""
+    score_int = int(float(score)) if score else 0
+    quality = "STRONG" if score_int >= 80 else "GOOD" if score_int >= 60 else "WEAK"
+    direction = "▲ LONG" if is_long else "▼ SHORT"
 
     telegram_message = (
-        f"{signal_emoji} <b>{display_name}</b>\n"
-        f"💰 {alert.price}$  |  📡 {alert.signal}  |  ⏱ {alert.timeframe}\n"
-        f"🎯 النقاط: {score}/100 {score_bar}\n"
-        f"━━━━━━━━━━━━━━\n"
+        f"<b>{direction} | {display_name}</b>\n"
+        f"<code>━━━━━━━━━━━━━━━━━━━━━━</code>\n"
+        f"<b>Price</b>      {alert.price}$\n"
+        f"<b>Signal</b>     {alert.signal}\n"
+        f"<b>Timeframe</b>  {alert.timeframe}\n"
+        f"<b>Score</b>      {score}/100 — {quality}\n"
+        f"<code>━━━━━━━━━━━━━━━━━━━━━━</code>\n"
         f"{analysis}\n"
-        f"━━━━━━━━━━━━━━\n"
-        f"🕐 {now_str}"
+        f"<code>━━━━━━━━━━━━━━━━━━━━━━</code>\n"
+        f"<i>{now_str} EST</i>"
     )
 
     send_telegram(telegram_message)
